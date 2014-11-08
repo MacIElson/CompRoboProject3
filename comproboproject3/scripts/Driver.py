@@ -20,7 +20,6 @@ def nothing(x):
     pass
 
 class Driver:
-
     def __init__(self, verbose = False):
         cv2.namedWindow("Image window", 1)
         self.bridge = CvBridge()
@@ -39,6 +38,9 @@ class Driver:
         self.object_detected = False
 
         cv2.namedWindow('image')
+
+        cv2.createTrackbar('speed','image',0,200,nothing)
+        cv2.setTrackbarPos('speed','image',8)
 
         cv2.createTrackbar('edgeMin','image',0,100,nothing)
         cv2.setTrackbarPos('edgeMin','image',50)
@@ -185,6 +187,8 @@ class Driver:
         highH = cv2.getTrackbarPos('highH','image')
         highS = cv2.getTrackbarPos('highS','image')
         highV = cv2.getTrackbarPos('highV','image')
+        speed100 = cv2.getTrackbarPos('speed','image')
+        speed = float(speed100)/100
 
         lower_red3 = np.array([lowH,lowS,lowV])
         upper_red3 = np.array([highH,highS,highV])
@@ -215,8 +219,9 @@ class Driver:
             error1 = (float(sum(num))/len(num))
             error2 = (len(driveRow))/2
             error = -1*(error1-error2)
-            ang = float(error*math.pow(abs(error),.6))/5000
-            ang  = max(-.3, min(.3, ang))
+            ang = float(error*math.pow(abs(error),.6))/(400/speed)
+
+            ang  = max(-3.5*speed, min(3.5*speed, ang))
 
             print float(sum(num))/len(num)
 
@@ -227,7 +232,7 @@ class Driver:
 
             self.ang = ang
 
-            self.sendCommand(.08, ang)
+            self.sendCommand(speed, ang)
 
         filteredImage[350:480, 40:600] = mask3
 
