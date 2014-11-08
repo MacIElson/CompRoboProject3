@@ -40,7 +40,7 @@ class Driver:
         self.sift = cv2.SIFT()
         self.MIN_MATCH_COUNT = 10
         self.image_count = 0
-
+        self.ang = 0
         cv2.namedWindow('image')
 
         cv2.createTrackbar('speed','image',0,200,nothing)
@@ -77,17 +77,15 @@ class Driver:
         except CvBridgeError, e:
             print e
 
-        cv2.imshow('Video1', self.cv_image)
+        #cv2.imshow('Video1', self.cv_image)
         self.followRoad2()
         self.checkObject()
         if self.image_count % 10 is 0:
             self.checkStop(self.cv_image)
     
-
+        # gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         
-        gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
-        
-        # Display the resulting frame
+            # Display the resulting frame
         cv2.imshow('Video2', self.cv_image)
 
         cv2.waitKey(3)
@@ -178,7 +176,11 @@ class Driver:
     def followRoad2(self):
         workingCopy = self.cv_image
         imShape = workingCopy.shape
-        print imShape
+        self.dprint(imShape)
+        # gray = cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
+        # graySmall = gray[350:480, 100:600]
+        # cv2.imshow('Video3', graySmall)
+
         #lower_green1 = np.array([160,176,00])
         #upper_green1 = np.array([223,223,16])
         smallCopy = workingCopy[350:480, 40:600]
@@ -246,7 +248,9 @@ class Driver:
 
         filteredImage[350:480, 40:600] = mask3
 
-        self.cv_image = filteredImage
+        cv2.imshow('Video3', filteredImage)
+
+        # self.cv_image = filteredImage
 
 
     def checkObject(self):
