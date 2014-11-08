@@ -72,6 +72,14 @@ def canny():
     # cv2.createTrackbar('pixelDif','image',0,100,nothing)
     cv2.createTrackbar('largeSize','image',0,1000,nothing)
     cv2.setTrackbarPos('largeSize','image',500)
+    cv2.createTrackbar('blurX','image',0,30,nothing)
+    cv2.setTrackbarPos('blurX','image',6)
+    cv2.createTrackbar('blurY','image',0,30,nothing)
+    cv2.setTrackbarPos('blurY','image',3)
+    cv2.createTrackbar('minValue','image',0,100,nothing)
+    cv2.setTrackbarPos('minValue','image',0)
+    cv2.createTrackbar('avgCorrectNeeded','image',0,100,nothing)
+    cv2.setTrackbarPos('avgCorrectNeeded','image',0)
     cv2.createTrackbar('lowH','image',0,255,nothing)
     cv2.setTrackbarPos('lowH','image',128)
     cv2.createTrackbar('lowS','image',0,255,nothing)
@@ -100,6 +108,10 @@ def canny():
         highH = cv2.getTrackbarPos('highH','image')
         highS = cv2.getTrackbarPos('highS','image')
         highV = cv2.getTrackbarPos('highV','image')
+        blurX = cv2.getTrackbarPos('blurX','image')
+        blurY = cv2.getTrackbarPos('blurY','image')
+        minValue = float(cv2.getTrackbarPos('minValue','image'))/100.0
+        avgCorrectNeeded = float(cv2.getTrackbarPos('avgCorrectNeeded','image'))/100.0
 
         # define range of blue color in HSV
         lower_red1 = np.array([128,75,150])
@@ -124,9 +136,11 @@ def canny():
         mask = cv2.bitwise_or(mask12, mask3)
 
         # Bitwise-AND mask and original image
-        res = cv2.bitwise_and(frame,frame, mask= mask)
+        #res = cv2.bitwise_and(frame,frame, mask= mask)
 
-        gray = cv2.cvtColor(res,cv2.COLOR_BGR2GRAY)
+        blurRedMask = cv2.GaussianBlur(mask, ksize=(5, 5), sigmaX=blurX, sigmaY=blurY)
+
+        gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray,50,150,apertureSize = 3)
         contours, hierarchy = cv2.findContours(edges,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
 
@@ -139,29 +153,19 @@ def canny():
         for cnt in contours:
             perimeter = cv2.arcLength(cnt,True)
             if perimeter > largeSize:
-                largeContours.append(cnt)
+                colorCorrect = 0.0
+                for pixel in cnt:
+                    print mask.shape
+                    print pixel
+                    if mask[pixel[0][1]][pixel[0][0]]>minValue:
+                        colorCorrect += 1
+                avgCorrect = float(colorCorrect)/len(cnt)
+                if avgCorrect>avgCorrectNeeded:
+                    largeContours.append(cnt)
 
-
-        # smoothContours = []
-        # for cnt in largeContours:
-        #     error = 0.0
-        #     if len(cnt) > pixelDif:
-        #         for i in range(len(cnt)-pixelDif):
-        #             midI = pixelDif/2
-        #             dist = ((cnt[i][0][0]-cnt[i+pixelDif][0][0])**2 + (cnt[i][0][1]-cnt[pixelDif][0][1])**2 )**.5
-        #             if dist < minErrorSize:
-        #                 tempPT = ((cnt[i][0][0]+cnt[midI][0][0])/2,(cnt[i][0][1]+cnt[midI][0][1])/2)
-        #                 dist = (tempPT[0]-cnt[midI][0][0])**2 + (tempPT[1]-cnt[midI][0][1])**2
-        #                 error += dist
-        #         averageError = error/len(cnt)
-        #         print averageError
-        #         if averageError < averageErrorSize:
-        #             smoothContours.append(cnt)
-
-
-        cv2.drawContours(res,largeContours,-1,(0,255,0),2)
+        cv2.drawContours(frame,largeContours,-1,(0,255,0),2)
             # Display the resulting frame
-        cv2.imshow('Video', res)
+        cv2.imshow('Video', frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
