@@ -24,6 +24,7 @@ class Driver:
     def __init__(self, verbose = False):
         cv2.namedWindow('image')
 
+        self.ang = 0
         self.road_detected = False
         self.stop_detected = 0 # Trying out a 0 definite no stop sign, 5 definite stop sign.  1 probably, 2 possibly not, 3 possibly, 4 probably
         self.object_detected = False
@@ -33,16 +34,16 @@ class Driver:
         self.image_count = 0
 
         cv2.createTrackbar('speed','image',0,200,nothing)
-        cv2.setTrackbarPos('speed','image',200)
+        cv2.setTrackbarPos('speed','image',0)
 
-        cv2.createTrackbar('pidP','image',0,800,nothing)
-        cv2.setTrackbarPos('pidP','image',100)
+        cv2.createTrackbar('pidP','image',0,8000,nothing)
+        cv2.setTrackbarPos('pidP','image',400)
 
         cv2.createTrackbar('pidI','image',0,400,nothing)
-        cv2.setTrackbarPos('pidI','image',0)
+        cv2.setTrackbarPos('pidI','image',20)
 
-        cv2.createTrackbar('pidD','image',0,400,nothing)
-        cv2.setTrackbarPos('pidD','image',0)
+        cv2.createTrackbar('pidD','image',0,4000,nothing)
+        cv2.setTrackbarPos('pidD','image',210)
 
         cv2.createTrackbar('edgeMin','image',0,100,nothing)
         cv2.setTrackbarPos('edgeMin','image',50)
@@ -70,7 +71,7 @@ class Driver:
 
         cv2.namedWindow("Image window", 1)
 
-        time.sleep(5)
+        time.sleep(1)
 
         self.bridge = CvBridge()
         
@@ -97,15 +98,16 @@ class Driver:
         except CvBridgeError, e:
             print e
 
-        cv2.imshow('Video1', self.cv_image)
+        #cv2.imshow('Video1', self.cv_image)
         self.followRoad3()
         self.checkObject()
         if self.image_count % 10 is 0:
-            self.checkStop(self.cv_image)
+            pass
+            #self.checkStop(self.cv_image)
     
 
-        
-        gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
+        print self.cv_image.shape
+        #gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         
         # Display the resulting frame
         cv2.imshow('Video2', self.cv_image)
@@ -188,6 +190,9 @@ class Driver:
         self.pid.setKi(pidI)
         self.pid.setKd(pidD)
 
+        lower_red1 = np.array([00,102,165])
+        upper_red1 = np.array([28,205,255])
+
         lowH = cv2.getTrackbarPos('lowH','image')
         lowS = cv2.getTrackbarPos('lowS','image')
         lowV = cv2.getTrackbarPos('lowV','image')
@@ -197,20 +202,27 @@ class Driver:
         speed100 = cv2.getTrackbarPos('speed','image')
         speed = float(speed100)/100
 
-        lower_red3 = np.array([lowH,lowS,lowV])
-        upper_red3 = np.array([highH,highS,highV])
+        lower_red2 = np.array([lowH,lowS,lowV])
+        upper_red2 = np.array([highH,highS,highV])
 
-        mask3 = cv2.inRange(hsv, lower_red3, upper_red3)
+        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+
+        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+
+        mask12 = cv2.bitwise_or(mask1, mask2)
 
         filteredImage = np.zeros((imShape[0],imShape[1]), np.uint8)
 
-        driveRow = mask3[-1]+mask3[-2]+mask3[-3]+mask3[-4]+mask3[-5]
+        driveRow = mask12[-1]+mask12[-10]+mask12[-30]+mask12[-60]+mask12[-80]
 
         num = [];
+
+        driveRow = numpy.sum(mask12,1)
         
         for i in range(len(driveRow)):
             if driveRow[i] > 0:
                 num.append(i+1)
+
 
         if len(num) == 0:
             self.sendCommand(0, self.ang)
@@ -227,9 +239,11 @@ class Driver:
 
             self.sendCommand(speed, ang)
 
-        filteredImage[350:480, 40:600] = mask3
+        filteredImage[350:480, 40:600] = mask12
 
-        self.cv_image = filteredImage
+        cv2.imshow('Video3', filteredImage)
+
+        #self.cv_image = filteredImage
 
     def followRoad2(self):
         workingCopy = self.cv_image
@@ -267,7 +281,7 @@ class Driver:
 
         mask12 = cv2.bitwise_or(mask1, mask2)
 
-        mask123 = cv2.bitwise_or(mask12, mask3)
+        mask3 = cv2.bitwise_or(mask1, mask3)
 
         filteredImage = np.zeros((imShape[0],imShape[1]), np.uint8)
 
@@ -302,7 +316,7 @@ class Driver:
 
         filteredImage[350:480, 40:600] = mask3
 
-        self.cv_image = filteredImage
+        #self.cv_image = filteredImage
 
 
     def checkObject(self):
