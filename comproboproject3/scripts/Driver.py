@@ -24,6 +24,14 @@ class Driver:
     def __init__(self, verbose = False):
         cv2.namedWindow('image')
 
+        self.road_detected = False
+        self.stop_detected = 0 # Trying out a 0 definite no stop sign, 5 definite stop sign.  1 probably, 2 possibly not, 3 possibly, 4 probably
+        self.object_detected = False
+        self.stop_sign_img = cv2.imread("greenSmall.png",0)
+        self.sift = cv2.SIFT()
+        self.MIN_MATCH_COUNT = 10
+        self.image_count = 0
+
         cv2.createTrackbar('speed','image',0,200,nothing)
         cv2.setTrackbarPos('speed','image',200)
 
@@ -82,6 +90,7 @@ class Driver:
         self.dprint("Driver Initiated")
         
     def recieveImage(self,raw_image):
+        self.image_count += 1
         self.dprint("Image Recieved")
         try:
             self.cv_image = self.bridge.imgmsg_to_cv2(raw_image, "bgr8")
@@ -91,8 +100,13 @@ class Driver:
         cv2.imshow('Video1', self.cv_image)
         self.followRoad3()
         self.checkObject()
-        self.checkStop()
+        if self.image_count % 10 is 0:
+            self.checkStop(self.cv_image)
     
+
+        
+        gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
+        
         # Display the resulting frame
         cv2.imshow('Video2', self.cv_image)
 
@@ -295,8 +309,54 @@ class Driver:
         self.dprint("Check for the object here")
 
 
-    def checkStop(self):
+    def checkStop(self, scene):
         self.dprint("Check for the stopsign here")
+        # find the keypoints and descriptors with SIFT
+        kp1, des1 = self.sift.detectAndCompute(self.stop_sign_img,None)
+        kp2, des2 = self.sift.detectAndCompute(scene,None)
+
+        FLANN_INDEX_KDTREE = 0
+        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        search_params = dict(checks = 50)
+
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+        matches = flann.knnMatch(des1,des2,k=2)
+
+        # store all the good matches as per Lowe's ratio test.
+        good = []
+        for m,n in matches:
+            if m.distance < 0.7*n.distance:
+                good.append(m)
+        if len(good)>self.MIN_MATCH_COUNT :
+            src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+            dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+
+            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+            matchesMask = mask.ravel().tolist()
+
+            h,w = self.stop_sign_img.shape
+            pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
+            dst = cv2.perspectiveTransform(pts,M)
+
+            cv2.polylines(scene,[np.int32(dst)],True,255,3)
+            # print img2
+            if self.stop_detected < 5:
+                self.stop_detected += 1
+                if self.stop_detected is 4:
+                    print "stop sign found"
+                
+            # if self.stop_detected > 3:
+            #     print "stop sign found"
+                
+        else:
+            # print "Not enough matches are found - %d/%d" % (len(good),self.MIN_MATCH_COUNT )
+            matchesMask = None
+            if self.stop_detected > 0:
+                self.stop_detected -= 1
+                if self.stop_detected is 1:
+                    print "stop sign lost"
+            
 
     def sendCommand(self, lin, ang):
         twist = Twist()
@@ -388,7 +448,7 @@ class PID:
         return self.Derivator
 
 def main(args):
-    ic = Driver(True)
+    ic = Driver(False)
     rospy.init_node('image_converter', anonymous=True)
     try:
         rospy.spin()
