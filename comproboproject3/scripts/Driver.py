@@ -33,8 +33,10 @@ class Driver:
         self.MIN_MATCH_COUNT = 10
         self.image_count = 0
 
+        self.timeLost = -1
+
         cv2.createTrackbar('speed','image',0,200,nothing)
-        cv2.setTrackbarPos('speed','image',0)
+        cv2.setTrackbarPos('speed','image',00)
 
         cv2.createTrackbar('pidP','image',0,8000,nothing)
         cv2.setTrackbarPos('pidP','image',400)
@@ -43,7 +45,7 @@ class Driver:
         cv2.setTrackbarPos('pidI','image',20)
 
         cv2.createTrackbar('pidD','image',0,4000,nothing)
-        cv2.setTrackbarPos('pidD','image',210)
+        cv2.setTrackbarPos('pidD','image',370)
 
         cv2.createTrackbar('edgeMin','image',0,100,nothing)
         cv2.setTrackbarPos('edgeMin','image',50)
@@ -53,25 +55,32 @@ class Driver:
         cv2.createTrackbar('largeSize','image',0,1000,nothing)
         cv2.setTrackbarPos('largeSize','image',500)
 
+        cv2.createTrackbar('largeSize','image',0,1000,nothing)
+        cv2.setTrackbarPos('largeSize','image',500)
+
         cv2.createTrackbar('lowH','image',0,255,nothing)
-        cv2.setTrackbarPos('lowH','image',128)
+        cv2.setTrackbarPos('lowH','image',0)
         cv2.createTrackbar('lowS','image',0,255,nothing)
-        cv2.setTrackbarPos('lowS','image',75)
+        cv2.setTrackbarPos('lowS','image',96)
         cv2.createTrackbar('lowV','image',0,255,nothing)
-        cv2.setTrackbarPos('lowV','image',113)
+        cv2.setTrackbarPos('lowV','image',150)
         cv2.createTrackbar('highH','image',0,255,nothing)
-        cv2.setTrackbarPos('highH','image',197)
+        cv2.setTrackbarPos('highH','image',20)
         cv2.createTrackbar('highS','image',0,255,nothing)
         cv2.setTrackbarPos('highS','image',255)
         cv2.createTrackbar('highV','image',0,255,nothing)
         cv2.setTrackbarPos('highV','image',255)
+
+        self.switch = '0 : OFF \n1 : ON'
+        cv2.createTrackbar(self.switch, 'image',0,1,self.stop)
+        cv2.setTrackbarPos(self.switch,'image',0)
 
         self.pid = PID(P=2.0, I=0.0, D=1.0, Derivator=0, Integrator=0, Integrator_max=500, Integrator_min=-500)
         self.pid.setPoint(float(280))
 
         cv2.namedWindow("Image window", 1)
 
-        time.sleep(1)
+        #time.sleep(1)
 
         self.bridge = CvBridge()
         
@@ -89,15 +98,28 @@ class Driver:
         self.object_detected = False
 
         self.dprint("Driver Initiated")
+
+    def stop(self, x):
+        if x == 0:
+            self.sendCommand(0,0)
+
         
     def recieveImage(self,raw_image):
-        self.image_count += 1
         self.dprint("Image Recieved")
         try:
             self.cv_image = self.bridge.imgmsg_to_cv2(raw_image, "bgr8")
         except CvBridgeError, e:
+
             print e
 
+        s = cv2.getTrackbarPos(self.switch,'image')
+        if s == 0:
+            self.dprint("Driving off")
+            cv2.waitKey(3)
+            return
+
+
+        self.image_count += 1
         #cv2.imshow('Video1', self.cv_image)
         self.followRoad3()
         self.checkObject()
@@ -172,9 +194,8 @@ class Driver:
     def followRoad3(self):
         workingCopy = self.cv_image
         imShape = workingCopy.shape
-        print imShape
 
-        smallCopy = workingCopy[350:480, 40:600]
+        smallCopy = workingCopy[350:480]
 
         hsv = cv2.cvtColor(smallCopy, cv2.COLOR_BGR2HSV)
 
@@ -209,23 +230,23 @@ class Driver:
 
         mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
 
-        mask12 = cv2.bitwise_or(mask1, mask2)
+        mask = cv2.bitwise_or(mask1, mask2)
+
+        mask = mask2
 
         filteredImage = np.zeros((imShape[0],imShape[1]), np.uint8)
 
-        driveRow = mask12[-1]+mask12[-10]+mask12[-30]+mask12[-60]+mask12[-80]
+        num = []
 
-        num = [];
-
-        driveRow = numpy.sum(mask12,1)
+        driveRow = np.sum(mask,0)
         
         for i in range(len(driveRow)):
             if driveRow[i] > 0:
                 num.append(i+1)
 
-
         if len(num) == 0:
-            self.sendCommand(0, self.ang)
+            tempAng = math.copysign(1, self.ang) * max(.5, min(1, abs(self.ang)))
+            self.sendCommand(.1, tempAng)
         else:
             error1 = (float(sum(num))/len(num))
             error2 = (len(driveRow))/2
@@ -239,7 +260,7 @@ class Driver:
 
             self.sendCommand(speed, ang)
 
-        filteredImage[350:480, 40:600] = mask12
+        filteredImage[350:480] = mask
 
         cv2.imshow('Video3', filteredImage)
 
