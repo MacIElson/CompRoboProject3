@@ -110,11 +110,10 @@ class Driver:
 
         self.image_count += 1
         #cv2.imshow('Video1', self.cv_image)
-        self.followRoad1()
+        self.followRoad()
         self.checkObject()
-        if self.image_count % 10 is 0:
-            pass
-            #self.checkStop(self.cv_image)
+        if self.image_count % 3 is 0:
+            self.checkStop(self.cv_image)
     
         #gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         
@@ -178,8 +177,7 @@ class Driver:
         for i in range(len(driveRow)):
             if driveRow[i] > 0:
                 num.append(i+1)
-        averageLineIndex = (float(sum(num))/len(num))
-
+        
         speed100 = cv2.getTrackbarPos('speed','image')
         speed = float(speed100)/100
 
@@ -187,10 +185,11 @@ class Driver:
             ang = math.copysign(1, self.ang) * max(.5, min(1, abs(self.ang)))
             self.sendCommand(.1, ang)
         else:
+            averageLineIndex = (float(sum(num))/len(num))
             ang = self.pid.update(averageLineIndex)/1000
             self.sendCommand(speed, ang)
         self.ang = ang
-        print "ang: " + str(ang)
+        #print "ang: " + str(ang)
 
         filteredImage[350:480] = mask
 
