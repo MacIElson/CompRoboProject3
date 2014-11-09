@@ -15,13 +15,64 @@ import numpy as np
 import scipy
 from scipy import ndimage
 import math
+import time
 
 def nothing(x):
     pass
 
 class Driver:
     def __init__(self, verbose = False):
+        cv2.namedWindow('image')
+
+        self.ang = 0
+        self.road_detected = False
+        self.stop_detected = 0 # Trying out a 0 definite no stop sign, 5 definite stop sign.  1 probably, 2 possibly not, 3 possibly, 4 probably
+        self.object_detected = False
+        self.stop_sign_img = cv2.imread("greenSmall.png",0)
+        self.sift = cv2.SIFT()
+        self.MIN_MATCH_COUNT = 10
+        self.image_count = 0
+        self.ang = 0
+        cv2.namedWindow('image')
+        cv2.createTrackbar('speed','image',0,200,nothing)
+        cv2.setTrackbarPos('speed','image',8)
+
+        cv2.createTrackbar('pidP','image',0,8000,nothing)
+        cv2.setTrackbarPos('pidP','image',400)
+
+        cv2.createTrackbar('pidI','image',0,400,nothing)
+        cv2.setTrackbarPos('pidI','image',20)
+
+        cv2.createTrackbar('pidD','image',0,4000,nothing)
+        cv2.setTrackbarPos('pidD','image',210)
+
+        cv2.createTrackbar('edgeMin','image',0,100,nothing)
+        cv2.setTrackbarPos('edgeMin','image',50)
+        cv2.createTrackbar('edgeMax','image',0,300,nothing)
+        cv2.setTrackbarPos('edgeMax','image',150)
+
+        cv2.createTrackbar('largeSize','image',0,1000,nothing)
+        cv2.setTrackbarPos('largeSize','image',500)
+
+        cv2.createTrackbar('lowH','image',0,255,nothing)
+        cv2.setTrackbarPos('lowH','image',0)
+        cv2.createTrackbar('lowS','image',0,255,nothing)
+        cv2.setTrackbarPos('lowS','image',75)
+        cv2.createTrackbar('lowV','image',0,255,nothing)
+        cv2.setTrackbarPos('lowV','image',113)
+        cv2.createTrackbar('highH','image',0,255,nothing)
+        cv2.setTrackbarPos('highH','image',25)
+        cv2.createTrackbar('highS','image',0,255,nothing)
+        cv2.setTrackbarPos('highS','image',255)
+        cv2.createTrackbar('highV','image',0,255,nothing)
+        cv2.setTrackbarPos('highV','image',255)
+
+        self.pid = PID(P=2.0, I=0.0, D=1.0, Derivator=0, Integrator=0, Integrator_max=500, Integrator_min=-500)
+        self.pid.setPoint(float(280))
+
         cv2.namedWindow("Image window", 1)
+
+        
         self.bridge = CvBridge()
         
         self.image_sub = rospy.Subscriber("camera/image_raw", Image, self.recieveImage)
@@ -34,38 +85,8 @@ class Driver:
         self.cv_image = None
 
         self.road_detected = False
-        self.stop_detected = 0 # Trying out a 0 definite no stop sign, 5 definite stop sign.  1 probably, 2 possibly not, 3 possibly, 4 probably
+        self.stop_detected = False
         self.object_detected = False
-        self.stop_sign_img = cv2.imread("greenSmall.png",0)
-        self.sift = cv2.SIFT()
-        self.MIN_MATCH_COUNT = 10
-        self.image_count = 0
-        self.ang = 0
-        cv2.namedWindow('image')
-
-        cv2.createTrackbar('speed','image',0,200,nothing)
-        cv2.setTrackbarPos('speed','image',8)
-
-        cv2.createTrackbar('edgeMin','image',0,100,nothing)
-        cv2.setTrackbarPos('edgeMin','image',50)
-        cv2.createTrackbar('edgeMax','image',0,300,nothing)
-        cv2.setTrackbarPos('edgeMax','image',150)
-
-        cv2.createTrackbar('largeSize','image',0,1000,nothing)
-        cv2.setTrackbarPos('largeSize','image',500)
-
-        cv2.createTrackbar('lowH','image',0,255,nothing)
-        cv2.setTrackbarPos('lowH','image',128)
-        cv2.createTrackbar('lowS','image',0,255,nothing)
-        cv2.setTrackbarPos('lowS','image',75)
-        cv2.createTrackbar('lowV','image',0,255,nothing)
-        cv2.setTrackbarPos('lowV','image',113)
-        cv2.createTrackbar('highH','image',0,255,nothing)
-        cv2.setTrackbarPos('highH','image',197)
-        cv2.createTrackbar('highS','image',0,255,nothing)
-        cv2.setTrackbarPos('highS','image',255)
-        cv2.createTrackbar('highV','image',0,255,nothing)
-        cv2.setTrackbarPos('highV','image',255)
 
         self.dprint("Driver Initiated")
         
@@ -84,6 +105,8 @@ class Driver:
             self.checkStop(self.cv_image)
     
         # gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
+
+        #gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         
             # Display the resulting frame
         cv2.imshow('Video2', self.cv_image)
@@ -146,32 +169,80 @@ class Driver:
 
 
     def followRoad3(self):
-        self.dprint("Follow the road here")
+        workingCopy = self.cv_image
+        imShape = workingCopy.shape
+        print imShape
 
-        edgeMin = cv2.getTrackbarPos('edgeMin','image')
-        edgeMax = cv2.getTrackbarPos('edgeMax','image')
+        smallCopy = workingCopy[350:480, 40:600]
 
-        gray = cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
-        graySmall = gray[350:480, 100:600]
-        cv2.imshow('Video3', graySmall)
-        edges = cv2.Canny(graySmall,edgeMin,edgeMax,apertureSize = 3)
-        contours, hierarchy = cv2.findContours(edges,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        hsv = cv2.cvtColor(smallCopy, cv2.COLOR_BGR2HSV)
 
-        largeContours = []
+        pidP100 = cv2.getTrackbarPos('pidP','image')
+        pidI100 = cv2.getTrackbarPos('pidI','image')
+        pidD100 = cv2.getTrackbarPos('pidD','image')
 
-        # pixelDif = cv2.getTrackbarPos('pixelDif','image')
-        largeSize = cv2.getTrackbarPos('largeSize','image')
+        pidP = float(pidP100)/100
+        pidI = float(pidI100)/100
+        pidD = float(pidD100)/100
+
+        self.pid.setKp(pidP)
+        self.pid.setKi(pidI)
+        self.pid.setKd(pidD)
+
+        lower_red1 = np.array([00,102,165])
+        upper_red1 = np.array([28,205,255])
+
+        lowH = cv2.getTrackbarPos('lowH','image')
+        lowS = cv2.getTrackbarPos('lowS','image')
+        lowV = cv2.getTrackbarPos('lowV','image')
+        highH = cv2.getTrackbarPos('highH','image')
+        highS = cv2.getTrackbarPos('highS','image')
+        highV = cv2.getTrackbarPos('highV','image')
+        speed100 = cv2.getTrackbarPos('speed','image')
+        speed = float(speed100)/100
+
+        lower_red2 = np.array([lowH,lowS,lowV])
+        upper_red2 = np.array([highH,highS,highV])
+
+        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+
+        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+
+        mask12 = cv2.bitwise_or(mask1, mask2)
+
+        filteredImage = np.zeros((imShape[0],imShape[1]), np.uint8)
+
+        driveRow = mask12[-1]+mask12[-10]+mask12[-30]+mask12[-60]+mask12[-80]
+
+        num = [];
+
+        driveRow = np.sum(mask12,1)
+        
+        for i in range(len(driveRow)):
+            if driveRow[i] > 0:
+                num.append(i+1)
 
 
-        for cnt in contours:
-            perimeter = cv2.arcLength(cnt,True)
-            if perimeter > largeSize:
-                largeContours.append(cnt)
+        if len(num) == 0:
+            self.sendCommand(0, self.ang)
+        else:
+            error1 = (float(sum(num))/len(num))
+            error2 = (len(driveRow))/2
+            error = -1*(error1-error2)
 
-        cv2.drawContours(graySmall,largeContours,-1,(0,255,0),2)
-        gray[350:480, 100:600] = graySmall
-        self.cv_image = gray
-                #cv2.line(self.cv_image,(x1,y1),(x2,y2),(0,0,255),2)
+            ang = self.pid.update((float(sum(num))/len(num)))/1000
+
+            print "ang: " + str(ang)
+
+            self.ang = ang
+
+            self.sendCommand(speed, ang)
+
+        filteredImage[350:480, 40:600] = mask12
+
+        cv2.imshow('Video3', filteredImage)
+
+        #self.cv_image = filteredImage
 
     def followRoad2(self):
         workingCopy = self.cv_image
@@ -188,7 +259,7 @@ class Driver:
         hsv = cv2.cvtColor(smallCopy, cv2.COLOR_BGR2HSV)
 
         lower_red1 = np.array([00,102,165])
-        upper_red1 = np.array([28,205,255])
+        upper_red1 = np.array([28,255,255])
 
         lower_red2 = np.array([00,00,00])
         upper_red2 = np.array([00,00,00])
@@ -213,7 +284,7 @@ class Driver:
 
         mask12 = cv2.bitwise_or(mask1, mask2)
 
-        mask123 = cv2.bitwise_or(mask12, mask3)
+        mask3 = cv2.bitwise_or(mask1, mask3)
 
         filteredImage = np.zeros((imShape[0],imShape[1]), np.uint8)
 
@@ -234,13 +305,13 @@ class Driver:
             ang = float(error*math.pow(abs(error),.6))/(400/speed)
 
             ang  = max(-3.5*speed, min(3.5*speed, ang))
+            if 0:
+                print float(sum(num))/len(num)
 
-            print float(sum(num))/len(num)
-
-            print "error1: " + str(error1)
-            print "error2: " + str(error2)
-            print "error: " + str(error)
-            print "ang: " + str(ang)
+                print "error1: " + str(error1)
+                print "error2: " + str(error2)
+                print "error: " + str(error)
+                print "ang: " + str(ang)
 
             self.ang = ang
 
@@ -307,6 +378,7 @@ class Driver:
             
 
     def sendCommand(self, lin, ang):
+
         twist = Twist()
         twist.linear.x = lin; twist.linear.y = 0; twist.linear.z = 0
         twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = ang
@@ -316,9 +388,11 @@ class Driver:
         if self.verbose:
             print print_message
 
+
 class PID:
     """
     Discrete PID control
+    source: http://code.activestate.com/recipes/577231-discrete-pid-controller/
     """
 
     def __init__(self, P=2.0, I=0.0, D=1.0, Derivator=0, Integrator=0, Integrator_max=500, Integrator_min=-500):
