@@ -17,6 +17,7 @@ import scipy
 from scipy import ndimage
 import math
 import time
+import thread
 
 def nothing(x):
     pass
@@ -28,11 +29,18 @@ class Driver:
         self.ang = 0
         self.road_detected = False
         self.stop_detected = 0 # Trying out a 0 definite no stop sign, 5 definite stop sign.  1 probably, 2 possibly not, 3 possibly, 4 probably
-        self.object_detected = False
         self.stop_sign_img = cv2.imread("greenSmall.png",0)
         self.sift = cv2.SIFT()
         self.MIN_MATCH_COUNT = 10
         self.image_count = 0
+
+        self.templateKp1, self.templateDes1 = self.sift.detectAndCompute(self.stop_sign_img,None)
+        
+        FLANN_INDEX_KDTREE = 0
+        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        search_params = dict(checks = 50)
+
+        self.flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         self.timeLost = -1
 
@@ -74,16 +82,17 @@ class Driver:
         
         self.image_sub = rospy.Subscriber("camera/image_raw", Image, self.recieveImage)
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
+        self.sign_found_sub = rospy.Subscriber('sign_found', String, self.stopSignFound)
             
         # if true, we print what is going on
         self.verbose = verbose
 
         # most recent raw CV image
         self.cv_image = None
+        # thread.start_new_thread(self.stopSignThread, (self.cv_image))
 
         self.road_detected = False
         self.stop_detected = False
-        self.object_detected = False
 
         self.dprint("Driver Initiated")
 
@@ -91,7 +100,11 @@ class Driver:
         if x == 0:
             self.sendCommand(0,0)
 
-        
+
+    def stopSignFound(self, message):
+        print "YAYAYYA"
+        print message
+    
     def recieveImage(self,raw_image):
         self.dprint("Image Recieved")
         try:
@@ -102,8 +115,13 @@ class Driver:
         self.image_count += 1
         
         s = cv2.getTrackbarPos(self.switch,'image')
-        if self.image_count % 5 is 0:
-            self.checkStop(self.cv_image)
+        
+        self.sign_found_sub = rospy.Subscriber('/sign_found', String, queue_size=10)
+        
+        # if self.image_count % 5 is 0:
+            # thread.start_new_thread(self.checkStop, (self.cv_image,))
+
+            # self.checkStop()
         cv2.imshow('Video2', self.cv_image)
 
         if s == 0:
@@ -114,8 +132,6 @@ class Driver:
 
         #cv2.imshow('Video1', self.cv_image)
         self.followRoad()
-        if self.image_count % 3 is 0:
-            self.checkStop(self.cv_image)
     
         #gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         
@@ -125,7 +141,7 @@ class Driver:
         #msg = Twist(linear=Vector3(x=.1))
         #self.pub.publish(msg)
 
-def followRoad(self):
+    def followRoad(self):
         workingCopy = self.cv_image
         imShape = workingCopy.shape
 
@@ -195,22 +211,23 @@ def followRoad(self):
         filteredImage[350:480] = mask
 
         cv2.imshow('Video3', filteredImage)
-    def checkObject(self):
-        self.dprint("Check for the object here")
+    
+    def stopSignThread(self):
+        print "hi"
+        while not rospy.is_shutdown():
+            if self.cv_image is not None:
+                print "hi2"
+                self.checkStop()
+                print ""
 
     def checkStop(self, scene):
+        print "check stop"
         self.dprint("Check for the stopsign here")
         # find the keypoints and descriptors with SIFT
-        kp1, des1 = self.sift.detectAndCompute(self.stop_sign_img,None)
-        kp2, des2 = self.sift.detectAndCompute(scene,None)
+        start = time.time()
+        imageKP, imageDes = self.sift.detectAndCompute(scene, None)
 
-        FLANN_INDEX_KDTREE = 0
-        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-        search_params = dict(checks = 50)
-
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
-
-        matches = flann.knnMatch(des1,des2,k=2)
+        matches = self.flann.knnMatch(self.templateDes1,imageDes,k=2)
 
         # store all the good matches as per Lowe's ratio test.
         good = []
@@ -218,8 +235,8 @@ def followRoad(self):
             if m.distance < 0.7*n.distance:
                 good.append(m)
         if len(good)>self.MIN_MATCH_COUNT :
-            src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-            dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+            src_pts = np.float32([ self.templateKp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+            dst_pts = np.float32([ imageKP[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
             M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
             matchesMask = mask.ravel().tolist()
@@ -227,6 +244,8 @@ def followRoad(self):
             h,w = self.stop_sign_img.shape
             pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
             dst = cv2.perspectiveTransform(pts,M)
+            # print dst
+            # print pts
             # print dst          
             if self.isSquare(dst):  
                 # print dst[0][0][0]
@@ -243,9 +262,9 @@ def followRoad(self):
                 # # print bottom 
                 height = bottom - top
                 stopDist = self.estRange(height)
-                print "Dist:"+ str(stopDist)
+                # print "Dist:"+ str(stopDist)
 
-            cv2.polylines(scene,[np.int32(dst)],True,255,3)
+            # cv2.polylines(self.scene,[np.int32(dst)],True,255,3)
             # print img2
             if self.stop_detected < 5:
                 self.stop_detected += 1
@@ -264,8 +283,11 @@ def followRoad(self):
                 self.stop_detected -= 1
                 if self.stop_detected is 1:
                     print "stop sign lost"
+
+        # print "took:" + str(time.time()- start)
     def estRange(self, pixelDist):
         return  90.015400923886219 + -.58834960136704306 * pixelDist + .0012499950650678758 * math.pow(pixelDist,2)
+
     def isSquare(self, pts):
         sides = []
         sides.append(pts[1][0][1] - pts[0][0][1])
