@@ -10,6 +10,13 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import CompressedImage
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
+from std_msgs.msg import Header, String
+
+import tf
+from tf import TransformListener
+from tf import TransformBroadcaster
+from tf.transformations import euler_from_quaternion, rotation_matrix, quaternion_from_matrix, quaternion_from_euler
+from nav_msgs.msg import Odometry
 
 from geometry_msgs.msg import Twist, Vector3
 import numpy as np
@@ -19,11 +26,21 @@ import math
 import time
 import thread
 
+@staticmethod
+def convert_pose_to_xy_and_theta(pose):
+    """ Convert pose (geometry_msgs.Pose) to a (x,y,yaw) tuple """
+    orientation_tuple = (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
+    angles = euler_from_quaternion(orientation_tuple)
+    return (pose.position.x, pose.position.y, angles[2])
+
 def nothing(x):
     pass
 
 class Driver:
     def __init__(self, verbose = False):
+        #rospy.init_node('comp_robo_project3')
+        rospy.init_node('comproboproject3', anonymous=True)
+        print "hi2"
         cv2.namedWindow('image')
 
         self.ang = 0
@@ -43,6 +60,12 @@ class Driver:
         self.flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         self.timeLost = -1
+
+        self.base_frame = "base_link"       # the frame of the robot base
+        self.map_frame = "map"          # the name of the map coordinate frame
+        self.odom_frame = "odom"
+
+        self.tf_listener = TransformListener()
 
         cv2.createTrackbar('speed','image',0,200,nothing)
         cv2.setTrackbarPos('speed','image',00)
@@ -71,7 +94,7 @@ class Driver:
 
         self.switch = '0 : OFF \n1 : ON'
         cv2.createTrackbar(self.switch, 'image',0,1,self.stop)
-        cv2.setTrackbarPos(self.switch,'image',0)
+        cv2.setTrackbarPos(self.switch,'image',0)\
 
         self.pid = PID(P=2.0, I=0.0, D=1.0, Derivator=0, Integrator=0, Integrator_max=500, Integrator_min=-500)
         self.pid.setPoint(float(320))
@@ -79,8 +102,17 @@ class Driver:
         #cv2.namedWindow("Image window", 1)
 
         self.bridge = CvBridge()
+
+        #self.laser_subscriber = rospy.Subscriber(self.scan_topic, LaserScan, self.scan_received)
         
         self.image_sub = rospy.Subscriber("camera/image_raw", Image, self.recieveImage)
+
+        #subscribe to odometry
+        rospy.Subscriber('odom',Odometry,self.odometryCb)
+        self.xPosition = -1.0
+        self.yPosition = -1.0
+
+
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         self.sign_found_sub = rospy.Subscriber('sign_found', String, self.stopSignFound)
             
@@ -105,13 +137,24 @@ class Driver:
         print "YAYAYYA"
         print message
     
+    #odometry callback
+    def odometryCb(self,msg):
+        self.xPosition = msg.pose.pose.position.x
+        self.yPosition = msg.pose.pose.position.y
+
+    def euclidDistance(self,x1,y1,x2,y2):
+        return math.hypot(x2 - x1, y2 - y1)
+        
     def recieveImage(self,raw_image):
         self.dprint("Image Recieved")
+
+        #print self.xPosition,self.yPosition
+
         try:
             self.cv_image = self.bridge.imgmsg_to_cv2(raw_image, "bgr8")
         except CvBridgeError, e:
-
             print e
+            
         self.image_count += 1
         
         s = cv2.getTrackbarPos(self.switch,'image')
@@ -122,6 +165,9 @@ class Driver:
             # thread.start_new_thread(self.checkStop, (self.cv_image,))
 
             # self.checkStop()
+        if self.image_count % 5 is 0:
+            pass
+            #self.checkStop(self.cv_image)
         cv2.imshow('Video2', self.cv_image)
 
         if s == 0:
@@ -209,6 +255,8 @@ class Driver:
         #print "ang: " + str(ang)
 
         filteredImage[350:480] = mask
+
+        print "test"
 
         cv2.imshow('Video3', filteredImage)
     
@@ -303,7 +351,7 @@ class Driver:
         return True
 
     def sendCommand(self, lin, ang):
-
+        print lin,ang
         twist = Twist()
         twist.linear.x = lin; twist.linear.y = 0; twist.linear.z = 0
         twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = ang
@@ -394,11 +442,11 @@ class PID:
 
 def main(args):
     ic = Driver(False)
-    rospy.init_node('image_converter', anonymous=True)
-    try:
-        rospy.spin()
-    except KeyboardInterrupt:
-        print "Shutting down"
+    r = rospy.Rate(60)
+
+    while not(rospy.is_shutdown()):
+        # in the main loop all we do is continuously broadcast the latest map to odom transform
+        r.sleep()
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
