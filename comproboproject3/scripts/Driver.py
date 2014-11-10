@@ -129,6 +129,9 @@ class Driver:
     def odometryCb(self,msg):
         self.xPosition = msg.pose.pose.position.x
         self.yPosition = msg.pose.pose.position.y
+
+    def euclidDistance(self,x1,y1,x2,y2):
+        return math.hypot(x2 - x1, y2 - y1)
         
     def recieveImage(self,raw_image):
         self.dprint("Image Recieved")
