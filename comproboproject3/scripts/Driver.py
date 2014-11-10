@@ -149,7 +149,7 @@ class Driver:
 
     def checkDistToStop(self):
         if not self.stopSignFoundDist == -1:
-            currentDist = self.euclidDistance(self.xPosition,self.yPosition,self.stopSignFoundx,self.stopSignFoundy) + .12
+            currentDist = self.euclidDistance(self.xPosition,self.yPosition,self.stopSignFoundx,self.stopSignFoundy) + .10
             print "haveDist" + str(self.stopSignFoundDist - currentDist)
             if abs(self.stopSignFoundDist - currentDist) < .04:
                 print "robot STOP"
