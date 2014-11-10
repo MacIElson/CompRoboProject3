@@ -121,7 +121,7 @@ class SignWatcher:
 
     def signFound(self, stopDist):
         odom = str(self.image_odom[0]) + ","+ str(self.image_odom[1])
-        message = odom + "," + str(stopDist)
+        message = odom + "," + str(0.0254*stopDist)
         self.sign_found_pub.publish(message)
         time.sleep(10)
         

@@ -109,6 +109,11 @@ class Driver:
 
     #callback for when stop sign found
     def stopSignFound(self, message):
+        data = message.split(",")
+        self.stopSignFoundx = float(data[0])
+        self.stopSignFoundy = float(data[1])
+        self.stopSignFoundDist = float(data[2])
+        
         print message
         cv2.setTrackbarPos(self.switch,'image',0)
     
