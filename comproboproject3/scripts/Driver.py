@@ -43,7 +43,7 @@ class Driver:
         self.tf_listener = TransformListener()
 
         cv2.createTrackbar('speed','image',0,200,nothing)
-        cv2.setTrackbarPos('speed','image',00)
+        cv2.setTrackbarPos('speed','image',50)
 
         cv2.createTrackbar('pidP','image',0,8000,nothing)
         cv2.setTrackbarPos('pidP','image',400)
@@ -104,13 +104,14 @@ class Driver:
 
     #callback for when stop sign found
     def stopSignFound(self, message):
-        data = message.split(",")
+
+        data = message.data.split(",")
         self.stopSignFoundx = float(data[0])
         self.stopSignFoundy = float(data[1])
         self.stopSignFoundDist = float(data[2])
         
         print message
-        cv2.setTrackbarPos(self.switch,'image',0)
+        #cv2.setTrackbarPos(self.switch,'image',0)
     
     #odometry callback
     def odometryCb(self,msg):
@@ -128,6 +129,8 @@ class Driver:
         except CvBridgeError, e:
             print e
                     
+        self.checkDistToStop()
+
         s = cv2.getTrackbarPos(self.switch,'image')
         
         cv2.imshow('Video2', self.cv_image)
@@ -137,6 +140,7 @@ class Driver:
             cv2.waitKey(3)
             return
 
+        
 
         self.followRoad()
     
@@ -145,9 +149,15 @@ class Driver:
 
     def checkDistToStop(self):
         if not self.stopSignFoundDist == -1:
-            currentDist = euclidDistance(self.xPosition,self.yPosition,self.stopSignFoundx,self.stopSignFoundy)
-            if abs(self.stopSignFoundDist - currentDist) < .05:
+            currentDist = self.euclidDistance(self.xPosition,self.yPosition,self.stopSignFoundx,self.stopSignFoundy) + .12
+            print "haveDist" + str(self.stopSignFoundDist - currentDist)
+            if abs(self.stopSignFoundDist - currentDist) < .04:
+                print "robot STOP"
+                self.sendCommand(0,0)
                 cv2.setTrackbarPos(self.switch,'image',0)
+                self.stopSignFoundDist = -1
+                self.stopSignFoundy = -1
+                self.stopSignFoundx = -1
 
 
     def followRoad(self):
@@ -208,12 +218,22 @@ class Driver:
         speed = float(speed100)/100
 
         if len(num) == 0:
-            ang = math.copysign(1, self.ang) * max(.5, min(1, abs(self.ang)))
+            driveRow = np.sum(self.previousMask,0)
+            for i in range(len(driveRow)):
+                if driveRow[i] > 0:
+                    num.append(i+1)
+            averageLineIndex = (float(sum(num))/len(num))
+            if averageLineIndex <= 320:
+                sign = 1
+            else:
+                sign = -1
+            ang = sign * max(.5, min(1, abs(self.ang)))
             self.sendCommand(.1, ang)
         else:
             averageLineIndex = (float(sum(num))/len(num))
             ang = self.pid.update(averageLineIndex)/1000
             self.sendCommand(speed, ang)
+            self.previousMask = mask
         self.ang = ang
         #print "ang: " + str(ang)
 
@@ -222,7 +242,6 @@ class Driver:
         cv2.imshow('Video3', filteredImage)
 
     def sendCommand(self, lin, ang):
-        print lin,ang
         twist = Twist()
         twist.linear.x = lin; twist.linear.y = 0; twist.linear.z = 0
         twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = ang

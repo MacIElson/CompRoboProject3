@@ -61,8 +61,8 @@ class SignWatcher:
         self.image_count += 1     
 
         self.image_odom = [self.xPosition, self.yPosition] 
-        print "pic"
-        print self.image_odom
+        # print "pic"
+        # print self.image_odom
         
         if self.image_count % 4 is 0:
             self.checkStop()
@@ -123,7 +123,6 @@ class SignWatcher:
         odom = str(self.image_odom[0]) + ","+ str(self.image_odom[1])
         message = odom + "," + str(0.0254*stopDist)
         self.sign_found_pub.publish(message)
-        time.sleep(10)
         
 
     def estRange(self, pixelDist):
