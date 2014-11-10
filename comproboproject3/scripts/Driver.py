@@ -9,6 +9,7 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import CompressedImage
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
 
 from geometry_msgs.msg import Twist, Vector3
 import numpy as np
@@ -100,15 +101,19 @@ class Driver:
         except CvBridgeError, e:
 
             print e
-
+        self.image_count += 1
+        
         s = cv2.getTrackbarPos(self.switch,'image')
+        if self.image_count % 5 is 0:
+            self.checkStop(self.cv_image)
+        cv2.imshow('Video2', self.cv_image)
+
         if s == 0:
             self.dprint("Driving off")
             cv2.waitKey(3)
             return
 
 
-        self.image_count += 1
         #cv2.imshow('Video1', self.cv_image)
         self.followRoad()
         self.checkObject()
@@ -118,8 +123,7 @@ class Driver:
         #gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         
         # Display the resulting frame
-        cv2.imshow('Video2', self.cv_image)
-
+        
         cv2.waitKey(3)
         #msg = Twist(linear=Vector3(x=.1))
         #self.pub.publish(msg)
@@ -227,6 +231,23 @@ class Driver:
             h,w = self.stop_sign_img.shape
             pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
             dst = cv2.perspectiveTransform(pts,M)
+            # print dst          
+            if self.isSquare(dst):  
+                # print dst[0][0][0]
+                top = dst[0][0][1]
+                bottom = dst[0][0][1]
+                for pt in dst:
+                    # print pt[0][1] 
+                    if pt[0][1] > bottom:
+                        bottom = pt[0][1] 
+                    if pt[0][1] < top:
+                        top = pt[0][1]
+                # print "top" 
+                # # print top 
+                # # print bottom 
+                height = bottom - top
+                stopDist = self.estRange(height)
+                print "Dist:"+ str(stopDist)
 
             cv2.polylines(scene,[np.int32(dst)],True,255,3)
             # print img2
@@ -234,6 +255,8 @@ class Driver:
                 self.stop_detected += 1
                 if self.stop_detected is 4:
                     print "stop sign found"
+                    cv2.setTrackbarPos(self.switch,'image',0)
+
                 
             # if self.stop_detected > 3:
             #     print "stop sign found"
@@ -245,7 +268,21 @@ class Driver:
                 self.stop_detected -= 1
                 if self.stop_detected is 1:
                     print "stop sign lost"
-            
+    def estRange(self, pixelDist):
+        return  90.015400923886219 + -.58834960136704306 * pixelDist + .0012499950650678758 * math.pow(pixelDist,2)
+    def isSquare(self, pts):
+        sides = []
+        sides.append(pts[1][0][1] - pts[0][0][1])
+        sides.append(pts[2][0][0] - pts[1][0][0])
+        sides.append(pts[2][0][1] - pts[3][0][1])
+        sides.append(pts[3][0][0] - pts[0][0][0])
+        maxSide = max(sides)
+        minSide = min(sides)
+        meanSide = np.mean(sides)
+
+        if maxSide > meanSide*1.1 or minSide < meanSide *.9:
+            return False 
+        return True
 
     def sendCommand(self, lin, ang):
         twist = Twist()
