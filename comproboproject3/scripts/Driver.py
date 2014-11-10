@@ -9,6 +9,7 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import CompressedImage
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
 
 from geometry_msgs.msg import Twist, Vector3
 import numpy as np
@@ -32,18 +33,11 @@ class Driver:
         self.sift = cv2.SIFT()
         self.MIN_MATCH_COUNT = 10
         self.image_count = 0
-<<<<<<< HEAD
-        self.ang = 0
-        cv2.namedWindow('image')
-        cv2.createTrackbar('speed','image',0,200,nothing)
-        cv2.setTrackbarPos('speed','image',8)
-=======
 
         self.timeLost = -1
 
         cv2.createTrackbar('speed','image',0,200,nothing)
         cv2.setTrackbarPos('speed','image',00)
->>>>>>> 3d3b6c562bf489c61b8a621853871db82f5a6d98
 
         cv2.createTrackbar('pidP','image',0,8000,nothing)
         cv2.setTrackbarPos('pidP','image',400)
@@ -61,11 +55,7 @@ class Driver:
         cv2.createTrackbar('lowV','image',0,255,nothing)
         cv2.setTrackbarPos('lowV','image',150)
         cv2.createTrackbar('highH','image',0,255,nothing)
-<<<<<<< HEAD
-        cv2.setTrackbarPos('highH','image',25)
-=======
         cv2.setTrackbarPos('highH','image',20)
->>>>>>> 3d3b6c562bf489c61b8a621853871db82f5a6d98
         cv2.createTrackbar('highS','image',0,255,nothing)
         cv2.setTrackbarPos('highS','image',255)
         cv2.createTrackbar('highV','image',0,255,nothing)
@@ -80,12 +70,6 @@ class Driver:
 
         #cv2.namedWindow("Image window", 1)
 
-<<<<<<< HEAD
-        
-=======
-        #time.sleep(1)
-
->>>>>>> 3d3b6c562bf489c61b8a621853871db82f5a6d98
         self.bridge = CvBridge()
         
         self.image_sub = rospy.Subscriber("camera/image_raw", Image, self.recieveImage)
@@ -115,24 +99,27 @@ class Driver:
         except CvBridgeError, e:
 
             print e
-
+        self.image_count += 1
+        
         s = cv2.getTrackbarPos(self.switch,'image')
+        if self.image_count % 5 is 0:
+            self.checkStop(self.cv_image)
+        cv2.imshow('Video2', self.cv_image)
+
         if s == 0:
             self.dprint("Driving off")
             cv2.waitKey(3)
             return
 
 
-        self.image_count += 1
         #cv2.imshow('Video1', self.cv_image)
         self.followRoad()
-        if self.image_count % 10 is 0:
+        if self.image_count % 3 is 0:
             self.checkStop(self.cv_image)
     
         #gray= cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         
-            # Display the resulting frame
-        cv2.imshow('Video2', self.cv_image)
+        # Display the resulting frame
 
         cv2.waitKey(3)
         #msg = Twist(linear=Vector3(x=.1))
@@ -191,8 +178,7 @@ def followRoad(self):
         for i in range(len(driveRow)):
             if driveRow[i] > 0:
                 num.append(i+1)
-        averageLineIndex = (float(sum(num))/len(num))
-
+        
         speed100 = cv2.getTrackbarPos('speed','image')
         speed = float(speed100)/100
 
@@ -200,10 +186,11 @@ def followRoad(self):
             ang = math.copysign(1, self.ang) * max(.5, min(1, abs(self.ang)))
             self.sendCommand(.1, ang)
         else:
+            averageLineIndex = (float(sum(num))/len(num))
             ang = self.pid.update(averageLineIndex)/1000
             self.sendCommand(speed, ang)
         self.ang = ang
-        print "ang: " + str(ang)
+        #print "ang: " + str(ang)
 
         filteredImage[350:480] = mask
 
@@ -240,6 +227,23 @@ def followRoad(self):
             h,w = self.stop_sign_img.shape
             pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
             dst = cv2.perspectiveTransform(pts,M)
+            # print dst          
+            if self.isSquare(dst):  
+                # print dst[0][0][0]
+                top = dst[0][0][1]
+                bottom = dst[0][0][1]
+                for pt in dst:
+                    # print pt[0][1] 
+                    if pt[0][1] > bottom:
+                        bottom = pt[0][1] 
+                    if pt[0][1] < top:
+                        top = pt[0][1]
+                # print "top" 
+                # # print top 
+                # # print bottom 
+                height = bottom - top
+                stopDist = self.estRange(height)
+                print "Dist:"+ str(stopDist)
 
             cv2.polylines(scene,[np.int32(dst)],True,255,3)
             # print img2
@@ -247,6 +251,8 @@ def followRoad(self):
                 self.stop_detected += 1
                 if self.stop_detected is 4:
                     print "stop sign found"
+                    cv2.setTrackbarPos(self.switch,'image',0)
+
                 
             # if self.stop_detected > 3:
             #     print "stop sign found"
@@ -258,7 +264,21 @@ def followRoad(self):
                 self.stop_detected -= 1
                 if self.stop_detected is 1:
                     print "stop sign lost"
-            
+    def estRange(self, pixelDist):
+        return  90.015400923886219 + -.58834960136704306 * pixelDist + .0012499950650678758 * math.pow(pixelDist,2)
+    def isSquare(self, pts):
+        sides = []
+        sides.append(pts[1][0][1] - pts[0][0][1])
+        sides.append(pts[2][0][0] - pts[1][0][0])
+        sides.append(pts[2][0][1] - pts[3][0][1])
+        sides.append(pts[3][0][0] - pts[0][0][0])
+        maxSide = max(sides)
+        minSide = min(sides)
+        meanSide = np.mean(sides)
+
+        if maxSide > meanSide*1.1 or minSide < meanSide *.9:
+            return False 
+        return True
 
     def sendCommand(self, lin, ang):
 
