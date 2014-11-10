@@ -21,15 +21,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, Vector3
 import numpy as np
 import math
-import timeLost
 import thread
-
-@staticmethod
-def convert_pose_to_xy_and_theta(pose):
-    """ Convert pose (geometry_msgs.Pose) to a (x,y,yaw) tuple """
-    orientation_tuple = (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
-    angles = euler_from_quaternion(orientation_tuple)
-    return (pose.position.x, pose.position.y, angles[2])
 
 def nothing(x):
     pass
@@ -77,7 +69,7 @@ class Driver:
 
         self.switch = '0 : OFF \n1 : ON'
         cv2.createTrackbar(self.switch, 'image',0,1,self.stop)
-        cv2.setTrackbarPos(self.switch,'image',0)\
+        cv2.setTrackbarPos(self.switch,'image',0)
 
         self.pid = PID(P=2.0, I=0.0, D=1.0, Derivator=0, Integrator=0, Integrator_max=500, Integrator_min=-500)
         self.pid.setPoint(float(320))
@@ -100,6 +92,9 @@ class Driver:
 
         # most recent raw CV image
         self.cv_image = None
+        self.stopSignFoundx = -1
+        self.stopSignFoundy = -1
+        self.stopSignFoundDist = -1
 
         self.dprint("Driver Initiated")
 
@@ -142,7 +137,14 @@ class Driver:
     
         
         cv2.waitKey(3)
-        
+
+    def checkDistToStop(self):
+        if not self.stopSignFoundDist == -1:
+            currentDist = euclidDistance(self.xPosition,self.yPosition,self.stopSignFoundx,self.stopSignFoundy)
+            if abs(self.stopSignFoundDist - currentDist) < .05:
+                cv2.setTrackbarPos(self.switch,'image',0)
+
+
     def followRoad(self):
         workingCopy = self.cv_image
         imShape = workingCopy.shape
