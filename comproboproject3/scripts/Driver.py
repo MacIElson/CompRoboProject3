@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import roslib
-# roslib.load_manifest('my_package')
 import sys
 import rospy
 import cv2
@@ -10,7 +9,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import CompressedImage
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
-from std_msgs.msg import Header, String
+from std_msgs.msg import String
 from nav_msgs.msg import Odometry
 
 from geometry_msgs.msg import Twist, Vector3
@@ -100,22 +99,19 @@ class Driver:
 
         self.dprint("Driver Initiated")
 
-    #function that stops the robot is 0 is passed in, primary use is call back from stop switch
+    #function that stops the robot if 0 is passed in, primary use is call back from stop switch
     def stop(self, x):
         if x == 0:
             self.sendCommand(0,0)
 
     #callback for when stop sign found
     def stopSignFound(self, message):
-
+        #parse the message
         data = message.data.split(",")
         self.stopSignFoundx = float(data[0])
         self.stopSignFoundy = float(data[1])
         self.stopSignFoundDist = float(data[2])
-        
-        print message
-        #cv2.setTrackbarPos(self.switch,'image',0)
-    
+            
     #odometry callback
     def odometryCb(self,msg):
         self.xPosition = msg.pose.pose.position.x
@@ -158,9 +154,6 @@ class Driver:
         if not self.stopSignFoundDist == -1:
             #calulate disance that the robot has moved since the stop sign has been detected (.10 added to account for stop response delay)
             currentDist = self.euclidDistance(self.xPosition,self.yPosition,self.stopSignFoundx,self.stopSignFoundy) + .10
-
-            #print distance to stop sign
-            print "haveDist" + str(self.stopSignFoundDist - currentDist)
 
             #if in range of stop sign
             if abs(self.stopSignFoundDist - currentDist) < .04:
